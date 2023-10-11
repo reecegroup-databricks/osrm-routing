@@ -18,6 +18,28 @@
 
 # COMMAND ----------
 
+# MAGIC %md ## Step 0: Get input paramters for the execution
+
+# COMMAND ----------
+
+dbutils.widgets.text("osrm_backend_version","v5.27.1")
+dbutils.widgets.text("catalog","supplychain_sandbox")
+dbutils.widgets.text("schema","")
+
+# COMMAND ----------
+
+catalog = dbutils.widgets.get("catalog")
+schema = dbutils.widgets.get("schema")
+
+# COMMAND ----------
+
+import os
+
+os.environ["OSRM_BACKEND_VERSION"] = dbutils.widgets.get("osrm_backend_version")
+os.environ["OSRM_BACKEND_LOCATION"] = f"/Volumes/{catalog}/{schema}"
+
+# COMMAND ----------
+
 # MAGIC %md ## Step 1: Build the Server Software
 # MAGIC
 # MAGIC To get started, we need to build the OSRM Backend Server from the current source code available in [its GitHub repository](https://github.com/Project-OSRM/osrm-backend). The [*Build from Source* instructions](https://github.com/Project-OSRM/osrm-backend#building-from-source) provided by the project team provide the basic steps required for this.  We'll start by installing package dependencies into our environment as follows:
@@ -46,7 +68,7 @@
 # MAGIC
 # MAGIC # clone the osrm backend server repo
 # MAGIC rm -rf osrm-backend
-# MAGIC git clone --depth 1 -b v5.26.0 https://github.com/Project-OSRM/osrm-backend
+# MAGIC git clone --depth 1 -b ${OSRM_BACKEND_VERSION} https://github.com/Project-OSRM/osrm-backend
 
 # COMMAND ----------
 
@@ -81,8 +103,6 @@
 # COMMAND ----------
 
 # MAGIC %md The first step is to download the map file we intend to employ:
-# MAGIC
-# MAGIC **NOTE** This step takes about 15 minutes for the North American map file.
 
 # COMMAND ----------
 
@@ -90,12 +110,12 @@
 # MAGIC %sh -e 
 # MAGIC
 # MAGIC # create clean folder to house downloaded map file
-# MAGIC rm -rf /srv/git/osrm-backend/maps/north-america
-# MAGIC mkdir -p /srv/git/osrm-backend/maps/north-america
+# MAGIC rm -rf /srv/git/osrm-backend/maps/australia-oceania
+# MAGIC mkdir -p /srv/git/osrm-backend/maps/australia-oceania
 # MAGIC
 # MAGIC # download map file to appropriate folder
-# MAGIC cd /srv/git/osrm-backend/maps/north-america
-# MAGIC wget --quiet https://download.geofabrik.de/north-america-latest.osm.pbf
+# MAGIC cd /srv/git/osrm-backend/maps/australia-oceania
+# MAGIC wget --quiet https://download.geofabrik.de/australia-oceania/australia-latest.osm.pbf
 # MAGIC
 # MAGIC # list folder contents
 # MAGIC ls -l .
@@ -115,10 +135,10 @@
 # MAGIC mkdir -p /srv/git/osrm-backend/logs
 # MAGIC
 # MAGIC # move to folder housing map file
-# MAGIC cd /srv/git/osrm-backend/maps/north-america
+# MAGIC cd /srv/git/osrm-backend/maps/australia-oceania
 # MAGIC
 # MAGIC # extract map file contents
-# MAGIC /srv/git/osrm-backend/build/osrm-extract north-america-latest.osm.pbf -p /srv/git/osrm-backend/profiles/car.lua > /srv/git/osrm-backend/logs/extract_log.txt
+# MAGIC /srv/git/osrm-backend/build/osrm-extract australia-latest.osm.pbf -p /srv/git/osrm-backend/profiles/car.lua > /srv/git/osrm-backend/logs/extract_log.txt
 # MAGIC
 # MAGIC # review output from extract command
 # MAGIC #echo '----------------------------------------'
@@ -133,7 +153,7 @@
 # COMMAND ----------
 
 # DBTITLE 1,Verify Map File Extraction
-# MAGIC %sh -e ls -l /srv/git/osrm-backend/maps/north-america
+# MAGIC %sh -e ls -l /srv/git/osrm-backend/maps/australia-oceania
 
 # COMMAND ----------
 
@@ -146,9 +166,9 @@
 # DBTITLE 1,Partition Extracted Map Files
 # MAGIC %sh -e 
 # MAGIC
-# MAGIC cd /srv/git/osrm-backend/maps/north-america
+# MAGIC cd /srv/git/osrm-backend/maps/australia-oceania
 # MAGIC
-# MAGIC /srv/git/osrm-backend/build/osrm-partition north-america-latest.osrm
+# MAGIC /srv/git/osrm-backend/build/osrm-partition australia-latest.osrm
 
 # COMMAND ----------
 
@@ -159,9 +179,9 @@
 # DBTITLE 1,Customize Extracted Map Files
 # MAGIC %sh -e 
 # MAGIC
-# MAGIC cd /srv/git/osrm-backend/maps/north-america
+# MAGIC cd /srv/git/osrm-backend/maps/australia-oceania
 # MAGIC
-# MAGIC /srv/git/osrm-backend/build/osrm-customize north-america-latest.osrm
+# MAGIC /srv/git/osrm-backend/build/osrm-customize australia-latest.osrm
 
 # COMMAND ----------
 
@@ -171,11 +191,21 @@
 
 # COMMAND ----------
 
-# DBTITLE 1,Copy OSRM Assets to Persistent Location
 # MAGIC %sh -e
-# MAGIC
+# MAGIC  
 # MAGIC rm -rf /dbfs/FileStore/osrm-backend
 # MAGIC cp -L -R /srv/git/osrm-backend /dbfs/FileStore/osrm-backend
+
+# COMMAND ----------
+
+# spark.sql(f"DROP VOLUME IF EXISTS {catalog}.{schema}.`osrm-backend`")
+# spark.sql(f"CREATE VOLUME {catalog}.{schema}.`osrm-backend`")
+
+# COMMAND ----------
+
+# DBTITLE 1,Copy OSRM Assets to Persistent Location
+# %sh -e
+# cp -L -R /srv/git/osrm-backend ${OSRM_BACKEND_LOCATION}
 
 # COMMAND ----------
 
